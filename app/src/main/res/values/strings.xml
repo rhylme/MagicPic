@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">魔幻拼图</string>
+    <string name="camera">拍照</string>
+    <string name="pictures">相册</string>
+    <string name="begin">开始游戏</string>
+    <string name="choise">选择难度:</string>
+    <string name="delete_tip">本地文件也删除吗?</string>
+    <string name="step">步数:</string>
+    <string name="time">时间:</string>
+    <string name="play_bitmap">原图</string>
+    <string name="reset">重置</string>
+</resources>
