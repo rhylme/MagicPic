@@ -1,12 +1,14 @@
 package com.rhyme.magicpic;
 
 import android.animation.Animator;
+import android.animation.ValueAnimator;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.graphics.Palette;
 import android.view.View;
@@ -48,6 +50,7 @@ public class PlayActivity extends AppCompatActivity implements Animator.Animator
     private int time;
     private int step;
     private boolean isplay = true;
+    private boolean isSuccess = false;
     private Handler handler = new Handler() {
         @Override
         public void handleMessage(Message msg) {
@@ -57,9 +60,13 @@ public class PlayActivity extends AppCompatActivity implements Animator.Animator
                     initDate();
                     if (isSuccess()) {
                         isplay = false;
+                        isSuccess = true;
                         bitmapBeanList.get(bitmapBeanList.size() - 1).setBitmap(BitmapUtil.lastBitmap);
                         playadapter.notifyDataSetChanged();
                         Toast.makeText(PlayActivity.this, "成功啦!你太棒了", Toast.LENGTH_SHORT).show();
+                    }
+                    if (alertDialog!=null&&alertDialog.isShowing()){
+                        alertDialog.dismiss();
                     }
                     break;
                 case 1:
@@ -74,12 +81,40 @@ public class PlayActivity extends AppCompatActivity implements Animator.Animator
                 case 3:
                     Toast.makeText(PlayActivity.this, "生成拼图失败,图片过大", Toast.LENGTH_SHORT).show();
                     break;
+                case 4:
+                    if (main_pic.getPath() == null) {
+                        play_image.setImageResource(main_pic.getResource());//设置原图图片
+                    } else {
+                        play_image.setImageBitmap(BitmapUtil.caculateBitmap(PlayActivity.this, main_pic.getPath(), 320, 500));//设置原图图片
+                    }
+                    break;
+                case 5:
+                    try {
+                        Palette.Swatch vi = (Palette.Swatch) msg.obj;
+                        ValueAnimator valueAnimator=ValueAnimator.ofArgb(getResources().getColor(R.color.colorPrimary),vi.getRgb());
+                        valueAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                            @Override
+                            public void onAnimationUpdate(ValueAnimator valueAnimator) {
+                                int value= (int) valueAnimator.getAnimatedValue();
+                                getSupportActionBar().setBackgroundDrawable(new ColorDrawable(value));
+                                Window window = getWindow();
+                                window.setStatusBarColor(value);
+                                reset.setBackground(new ColorDrawable(value));
+                                play_bitmap.setBackground(new ColorDrawable(value));
+                            }
+                        });
+                        valueAnimator.setDuration(1000);
+                        valueAnimator.start();
+                    } catch (NullPointerException e) {
+                        e.printStackTrace();
+                    }
+                    break;
             }
         }
     };
     private TextView play_bitmap;
     private TextView reset;
-
+    private AlertDialog alertDialog;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -87,34 +122,28 @@ public class PlayActivity extends AppCompatActivity implements Animator.Animator
         difficute = getIntent().getStringExtra("difficute");
         main_pic = (Main_Pic) getIntent().getSerializableExtra("info");
         initView();
-        if (main_pic.getPath() == null) {
-            bitmap = BitmapFactory.decodeResource(getResources(), main_pic.getResource());
-            play_image.setImageResource(main_pic.getResource());//设置原图图片
-        } else {
-            bitmap = BitmapFactory.decodeFile(main_pic.getPath());
-            play_image.setImageBitmap(BitmapUtil.caculateBitmap(this, main_pic.getPath(), 320, 500));//设置原图图片
-        }
-        Palette.from(bitmap).generate(new Palette.PaletteAsyncListener() {
-            @Override
-            public void onGenerated(Palette palette) {
-                //将颜色设置给相应控件
-                try {
-                    Palette.Swatch vi = palette.getMutedSwatch();
-                    getSupportActionBar().setBackgroundDrawable(new ColorDrawable(vi.getRgb()));
-                    Window window = getWindow();
-                    window.setStatusBarColor(vi.getRgb());
-                    reset.setBackground(new ColorDrawable(vi.getRgb()));
-                    play_bitmap.setBackground(new ColorDrawable(vi.getRgb()));
-                } catch (NullPointerException e) {
-                    e.printStackTrace();
-                }
-            }
-        });
         new Thread(new Runnable() {
             @Override
             public void run() {
+                if (main_pic.getPath() == null) {
+                    bitmap = BitmapFactory.decodeResource(getResources(), main_pic.getResource());
+                } else {
+                    bitmap = BitmapFactory.decodeFile(main_pic.getPath());
+                }
+                handler.sendEmptyMessage(4);
+                Palette.from(bitmap).generate(new Palette.PaletteAsyncListener() {
+                    @Override
+                    public void onGenerated(Palette palette) {
+                        //将颜色设置给相应控件
+                        Palette.Swatch vi = palette.getMutedSwatch();
+                        Message msg = handler.obtainMessage();
+                        msg.what = 5;
+                        msg.obj = vi;
+                        handler.sendMessage(msg);
+                    }
+                });
                 bitmapBeanList = BitmapUtil.createList(difficute, bitmap);
-                if (bitmapBeanList==null){
+                if (bitmapBeanList == null) {
                     handler.sendEmptyMessage(3);
                     return;
                 }
@@ -143,13 +172,15 @@ public class PlayActivity extends AppCompatActivity implements Animator.Animator
         play_gv = (GridView) findViewById(R.id.play_gv);
         play_gv.setNumColumns((int) Math.sqrt(BitmapUtil.Difficute(difficute)));
 
-        play_top.animate().translationZ(10).setDuration(1000).setListener(this).start();
         play_gv.setOnItemClickListener(this);
         play_image = (ImageView) findViewById(R.id.play_image);
         play_bitmap = (TextView) findViewById(R.id.play_bitmap);
         play_bitmap.setOnClickListener(this);
         reset = (TextView) findViewById(R.id.reset);
         reset.setOnClickListener(this);
+        alertDialog=new AlertDialog.Builder(this).setMessage("拼图生成中...").create();
+        alertDialog.setCanceledOnTouchOutside(false);
+        alertDialog.show();
     }
 
     @Override
@@ -159,12 +190,14 @@ public class PlayActivity extends AppCompatActivity implements Animator.Animator
 
     @Override
     public void onAnimationEnd(Animator animator) {
-        if (isplay) {
-            time++;
-            if (play_top.getTranslationZ() == 10) {
-                play_top.animate().translationZ(0).setDuration(1000).setListener(this).start();
-            } else {
-                play_top.animate().translationZ(10).setDuration(1000).setListener(this).start();
+        if (!isSuccess) {
+            if (isplay) {
+                time++;
+                if (play_top.getTranslationZ() == 10) {
+                    play_top.animate().translationZ(0).setDuration(1000).setListener(this).start();
+                } else {
+                    play_top.animate().translationZ(10).setDuration(1000).setListener(this).start();
+                }
             }
         }
     }
@@ -338,16 +371,17 @@ public class PlayActivity extends AppCompatActivity implements Animator.Animator
                                     bitmapBeanList.get(i).getBitmap().recycle();
                                 }
                                 bitmapBeanList.clear();
-                                List<BitmapBean> bitmapBeen=BitmapUtil.createList(difficute, bitmap);
-                                if (bitmapBeen==null||bitmapBeen.size()==0){
+                                List<BitmapBean> bitmapBeen = BitmapUtil.createList(difficute, bitmap);
+                                if (bitmapBeen == null || bitmapBeen.size() == 0) {
                                     handler.sendEmptyMessage(3);
                                     return;
-                                }else {
+                                } else {
                                     bitmapBeanList.addAll(bitmapBeen);
                                 }
                                 getPuzzleGenerator();
                             }
                             isplay = true;
+                            isSuccess = false;
                             time = 0;
                             step = 0;
                             handler.sendEmptyMessage(1);
@@ -365,5 +399,20 @@ public class PlayActivity extends AppCompatActivity implements Animator.Animator
         } else {
             play_image.animate().translationZ(0.0f).scaleX(0.0f).scaleY(0.0f).alpha(0.0f).setInterpolator(new DecelerateInterpolator()).setDuration(500).start();
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (!isSuccess) {
+            isplay = true;
+            play_top.animate().translationZ(10).setDuration(1000).setListener(this).start();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        isplay = false;
     }
 }
